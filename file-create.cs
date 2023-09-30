@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
 
@@ -15,10 +16,42 @@ namespace dumper
 
         static void Main(string[] args)
         {
-            string processName = ""; // Enter the process name here
+            // Ask for process name
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.Write("Enter the process name: ");
+            string processName = Console.ReadLine();
+            Console.ResetColor();
 
-            Console.WriteLine("Waiting for process to start...");
-            List<string> initialDlls = new List<string>();
+            string dumpFolder;
+
+            do
+            {
+                // Ask for dump folder
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.Write("Enter the dump folder: ");
+                dumpFolder = Console.ReadLine();
+                Console.ResetColor();
+
+                if (!Directory.Exists(dumpFolder))
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine("The specified folder does not exist. Please enter a valid folder.");
+                    Console.ResetColor();
+                }
+            }
+            while (!Directory.Exists(dumpFolder));
+
+            string initialDumpFolderPath = Path.Combine(dumpFolder, processName);
+            if (!Directory.Exists(initialDumpFolderPath))
+            {
+                Directory.CreateDirectory(initialDumpFolderPath);
+            }
+
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine($"Process found: {processName}\nInitial dump folder set to: {initialDumpFolderPath}\n");
+            Console.ResetColor();
+
+            Dictionary<string, string> initialDlls = new Dictionary<string, string>();
 
             while (true)
             {
@@ -26,52 +59,54 @@ namespace dumper
 
                 if (leagueProcesses.Length > 0)
                 {
-                    Console.WriteLine("Targeted process started. Scanning for new modules...");
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.Write("\nTargeted process found. ");
+                    Console.ResetColor();
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.Write("Scanning for new modules...\n");
+                    Console.ResetColor();
+                    Console.Title = $"Targeted process: {processName}.exe | Scanning for new modules ... ";
 
-                    bool isFirstScan = initialDlls.Count == 0; // check if it's the first scan
+                    string currentScanFolder = initialDumpFolderPath; // Assume no new DLLs initially
 
                     foreach (Process process in leagueProcesses)
                     {
-                        string dumpFolder = @"C:\Users\USER\Desktop\rlbot crack\league\dmp\" + Path.GetFileNameWithoutExtension(process.MainModule.FileName);
-
                         List<string> currentDlls = GetDllsInProcess(process);
 
-                        List<string> newDlls = isFirstScan ? currentDlls : currentDlls.Except(initialDlls).ToList();
-
-                        if (newDlls.Count > 0)
+                        foreach (string newDllPath in currentDlls)
                         {
-                            string timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
-                            string newDllFolder = Path.Combine(dumpFolder, "New_dlls : " + timestamp);
-
-                            if (!Directory.Exists(newDllFolder))
+                            if (!initialDlls.ContainsKey(newDllPath))
                             {
-                                Directory.CreateDirectory(newDllFolder);
-                            }
+                                if (currentScanFolder == initialDumpFolderPath)
+                                {
+                                    // Create a new folder only if a new DLL is found
+                                    string scanTimestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
+                                    currentScanFolder = Path.Combine(dumpFolder, $"Scan_{scanTimestamp}");
+                                    Directory.CreateDirectory(currentScanFolder);
+                                }
 
-                            foreach (string newDllPath in newDlls)
-                            {
                                 try
                                 {
-                                    string modulePath = Path.Combine(newDllFolder, Path.GetFileName(newDllPath));
+                                    string modulePath = Path.Combine(currentScanFolder, Path.GetFileName(newDllPath));
                                     File.Copy(newDllPath, modulePath, true);
                                 }
                                 catch (Exception ex)
                                 {
+                                    Console.ForegroundColor = ConsoleColor.Red;
                                     Console.WriteLine($"Error copying module: {ex.Message}");
+                                    Console.ResetColor();
                                 }
+
+                                initialDlls[newDllPath] = newDllPath;
+                                Console.ForegroundColor = ConsoleColor.Green;
+                                Console.WriteLine($"New module dumped to folder: {currentScanFolder}");
+                                Console.ResetColor();
                             }
-
-                            Console.WriteLine($"New modules dumped to folder: {newDllFolder}");
-                        }
-
-                        if (isFirstScan)
-                        {
-                            initialDlls.AddRange(currentDlls);
                         }
                     }
                 }
 
-                Thread.Sleep(100); // modify the delay here (1000 = 1 second)
+                Thread.Sleep(100); // Modify the delay here (1000 = 1 second)
             }
         }
 
@@ -96,5 +131,3 @@ namespace dumper
         }
     }
 }
-
-// the name "LeagueProcesses" was because this started as a league cheat dumper, but it works for any process
